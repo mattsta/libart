@@ -1,10 +1,9 @@
+#include "test_art.c"
 #include <check.h>
 #include <stdio.h>
 #include <syslog.h>
-#include "test_art.c"
 
-int main(void)
-{
+int main(void) {
     setlogmask(LOG_UPTO(LOG_DEBUG));
 
     Suite *s1 = suite_create("art");
@@ -32,4 +31,3 @@ int main(void)
     srunner_free(sr);
     return nf == 0 ? 0 : 1;
 }
-
