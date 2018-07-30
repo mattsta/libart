@@ -1,11 +1,11 @@
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h> /* size_t */
+#include <stdint.h>
 
 __BEGIN_DECLS
 
-typedef enum artNode { NODE4 = 1, NODE16, NODE48, NODE256 } artNode;
+typedef enum artType { NODE4 = 1, NODE16, NODE48, NODE256 } artType;
 
 #define MAX_PREFIX_LEN 10
 
@@ -13,13 +13,22 @@ typedef int (*art_callback)(void *data, const void *key, uint32_t keyLen,
                             void *value);
 
 /**
- * This struct is included as part
- * of all the various node sizes
+ * This struct is included as part of all the various node sizes
  */
 typedef struct art_node {
-    uint32_t partialLen;
+    uint32_t partialLen; /* length of 'partial' */
+#if 0
+    uint16_t type:4; /* one of the 'artType' enum values (>= 2 bits) */
+    uint16_t childrenCount:12; /* Must be able to hold value 256 (>= 9 bits) */
+#else
+    /* childrenCount can technically be incremented to 256 which rolls over to
+     * zero, but for types NODE48 and NODE256, we don't use childrenCount,
+     * we just always iterate through 256 completely.
+     * So, even though this is technically wrong, the code has compensated
+     * for not using the count at larger node types. */
     uint8_t type;
     uint8_t childrenCount;
+#endif
     uint8_t partial[MAX_PREFIX_LEN];
 } art_node;
 
@@ -43,8 +52,7 @@ typedef struct art_node16 {
 } art_node16;
 
 /**
- * Node with 48 children, but
- * a full 256 byte field.
+ * Node with 48 children, but a full 256 byte field.
  */
 typedef struct art_node48 {
     art_node n;
@@ -57,6 +65,7 @@ typedef struct art_node48 {
  */
 typedef struct art_node256 {
     art_node n;
+    /* node256 has no keys and uses pointers directly for comparisons */
     art_node *children[256];
 } art_node256;
 

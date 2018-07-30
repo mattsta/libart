@@ -25,7 +25,7 @@
  * Allocates a node of the given type,
  * initializes to zero and sets the type.
  */
-static art_node *alloc_node(uint8_t type) {
+static art_node *alloc_node(uint_fast8_t type) {
     art_node *n;
     switch (type) {
     case NODE4:
@@ -87,7 +87,6 @@ static void destroy_node(art_node *n) {
         }
 
         break;
-
     case NODE16:
         p.p2 = (art_node16 *)n;
         for (i = 0; i < n->childrenCount; i++) {
@@ -95,7 +94,6 @@ static void destroy_node(art_node *n) {
         }
 
         break;
-
     case NODE48:
         p.p3 = (art_node48 *)n;
         for (i = 0; i < 256; i++) {
@@ -103,12 +101,10 @@ static void destroy_node(art_node *n) {
             if (!idx) {
                 continue;
             }
-
             destroy_node(p.p3->children[idx - 1]);
         }
 
         break;
-
     case NODE256:
         p.p4 = (art_node256 *)n;
         for (i = 0; i < 256; i++) {
@@ -118,7 +114,6 @@ static void destroy_node(art_node *n) {
         }
 
         break;
-
     default:
         __builtin_unreachable();
     }
@@ -179,7 +174,6 @@ static size_t countNodes(art_node *n) {
             if (!idx) {
                 continue;
             }
-
             total += countNodes(p.p3->children[idx - 1]);
         }
 
@@ -249,7 +243,6 @@ static size_t countBytes(art_node *n) {
             if (!idx) {
                 continue;
             }
-
             total += countBytes(p.p3->children[idx - 1]);
         }
 
@@ -420,8 +413,8 @@ static inline int min(int a, int b) {
  */
 static int check_prefix(const art_node *n, const void *key_, int keyLen,
                         int depth) {
-    int max_cmp = min(min(n->partialLen, MAX_PREFIX_LEN), keyLen - depth);
     int idx;
+    const int max_cmp = min(min(n->partialLen, MAX_PREFIX_LEN), keyLen - depth);
     const uint8_t *restrict key = key_;
     for (idx = 0; idx < max_cmp; idx++) {
         if (n->partial[idx] != key[depth + idx]) {
@@ -549,9 +542,9 @@ static art_leaf *maximum(const art_node *n) {
     int idx;
     switch (n->type) {
     case NODE4:
-        return maximum(((const art_node4 *)n)->children[n->childrenCount - 1]);
+        return maximum(((art_node4 *)n)->children[n->childrenCount - 1]);
     case NODE16:
-        return maximum(((const art_node16 *)n)->children[n->childrenCount - 1]);
+        return maximum(((art_node16 *)n)->children[n->childrenCount - 1]);
     case NODE48:
         idx = 255;
         while (!((const art_node48 *)n)->keys[idx]) {
@@ -639,7 +632,9 @@ static void add_child48(art_node48 *n, art_node **ref, uint8_t c, void *child) {
 
         copy_header((art_node *)new_node, (art_node *)n);
         *ref = (art_node *)new_node;
+
         free(n);
+
         add_child256(new_node, ref, c, child);
     }
 }
@@ -978,7 +973,7 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l) {
             }
 
             if (prefix < MAX_PREFIX_LEN) {
-                int sub_prefix =
+                const int sub_prefix =
                     min(child->partialLen, MAX_PREFIX_LEN - prefix);
                 memcpy(n->n.partial + prefix, child->partial, sub_prefix);
                 prefix += sub_prefix;
@@ -1097,7 +1092,6 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
         return cb(data, l->key, l->keyLen, l->value);
     }
 
-    int idx;
     int res;
     switch (n->type) {
     case NODE4:
@@ -1109,7 +1103,6 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
         }
 
         break;
-
     case NODE16:
         for (int i = 0; i < n->childrenCount; i++) {
             res = recursive_iter(((art_node16 *)n)->children[i], cb, data);
@@ -1119,10 +1112,9 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
         }
 
         break;
-
     case NODE48:
         for (int i = 0; i < 256; i++) {
-            idx = ((art_node48 *)n)->keys[i];
+            const uint_fast8_t idx = ((art_node48 *)n)->keys[i];
             if (!idx) {
                 continue;
             }
@@ -1135,9 +1127,14 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
         }
 
         break;
-
     case NODE256:
         for (int i = 0; i < 256; i++) {
+            /* The child nodes are not populated from low to high, so it's
+             * possible to have a few dozen NULL nodes at the beginning then
+             * catch populated entries towards the end.
+             * The iterated node counts here to not respect n->childrenCount
+             * and can exceed the count by design. */
+
             if (!((art_node256 *)n)->children[i]) {
                 continue;
             }
@@ -1149,7 +1146,6 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
         }
 
         break;
-
     default:
         __builtin_unreachable();
     }
@@ -1240,9 +1236,10 @@ int art_iter_prefix(art_tree *t, const void *key_, int keyLen, art_callback cb,
             // If there is no match, search is terminated
             if (!prefix_len) {
                 return 0;
+            }
 
-                // If we've matched the prefix, iterate on this node
-            } else if (depth + prefix_len == keyLen) {
+            // If we've matched the prefix, iterate on this node
+            if (depth + prefix_len == keyLen) {
                 return recursive_iter(n, cb, data);
             }
 
