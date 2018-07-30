@@ -6,7 +6,7 @@
 #include <string.h>
 #include <strings.h>
 
-#if __i386__ || __amd64__
+#if __SSE__
 #include <emmintrin.h>
 #endif
 
@@ -301,7 +301,7 @@ static art_node **find_child(art_node *n, uint8_t c) {
     case NODE16: {
         p.p2 = (art_node16 *)n;
 
-#if __i386__ || __amd64__
+#if __SSE__
         // Compare the key to all 16 stored keys
         const __m128i cmp = _mm_cmpeq_epi8(
             _mm_set1_epi8(c), _mm_loadu_si128((__m128i *)p.p2->keys));
@@ -595,31 +595,18 @@ static void add_child48(art_node48 *n, art_node **ref, uint8_t c, void *child) {
 
 static void add_child16(art_node16 *n, art_node **ref, uint8_t c, void *child) {
     if (n->n.childrenCount < 16) {
-        unsigned mask = (1 << n->n.childrenCount) - 1;
+        const uint_fast32_t mask = (1 << n->n.childrenCount) - 1;
 
-// support non-x86 architectures
-#ifdef __i386__
-        __m128i cmp;
-
+#if __SSE__
         // Compare the key to all 16 stored keys
-        cmp = _mm_cmplt_epi8(_mm_set1_epi8(c),
-                             _mm_loadu_si128((__m128i *)n->keys));
+        const __m128i cmp = _mm_cmplt_epi8(_mm_set1_epi8(c),
+                                           _mm_loadu_si128((__m128i *)n->keys));
 
         // Use a mask to ignore children that don't exist
-        unsigned bitfield = _mm_movemask_epi8(cmp) & mask;
-#else
-#ifdef __amd64__
-        __m128i cmp;
-
-        // Compare the key to all 16 stored keys
-        cmp = _mm_cmplt_epi8(_mm_set1_epi8(c),
-                             _mm_loadu_si128((__m128i *)n->keys));
-
-        // Use a mask to ignore children that don't exist
-        unsigned bitfield = _mm_movemask_epi8(cmp) & mask;
+        const uint_fast32_t bitfield = _mm_movemask_epi8(cmp) & mask;
 #else
         // Compare the key to all 16 stored keys
-        unsigned bitfield = 0;
+        uint_fast32_t bitfield = 0;
         for (short i = 0; i < 16; ++i) {
             if (c < n->keys[i])
                 bitfield |= (1 << i);
@@ -628,10 +615,9 @@ static void add_child16(art_node16 *n, art_node **ref, uint8_t c, void *child) {
         // Use a mask to ignore children that don't exist
         bitfield &= mask;
 #endif
-#endif
 
         // Check if less than any
-        unsigned idx;
+        uint_fast32_t idx;
         if (bitfield) {
             idx = __builtin_ctz(bitfield);
             memmove(n->keys + idx + 1, n->keys + idx, n->n.childrenCount - idx);
@@ -651,7 +637,7 @@ static void add_child16(art_node16 *n, art_node **ref, uint8_t c, void *child) {
         // Copy the child pointers and populate the key map
         memcpy(new_node->children, n->children,
                sizeof(void *) * n->n.childrenCount);
-        for (int i = 0; i < n->n.childrenCount; i++) {
+        for (int_fast32_t i = 0; i < n->n.childrenCount; i++) {
             new_node->keys[n->keys[i]] = i + 1;
         }
 
