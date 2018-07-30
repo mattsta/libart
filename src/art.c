@@ -10,6 +10,10 @@
 #include <emmintrin.h>
 #endif
 
+#ifndef ART_USE_KEY_PROTECTION
+#define ART_USE_KEY_PROTECTION 1
+#endif
+
 /**
  * Macros to manipulate pointer tags
  */
@@ -300,6 +304,7 @@ size_t art_tree_bytes(art_tree *t) {
 // @param key_len the size of the byte, in bytes
 // @param idx the index into the key
 // @return the value of the key at the supplied index.
+#if ART_USE_KEY_PROTECTION
 #if 1
 #define keyAt(key, len, idx) ((idx) == (len) ? 0 : (key)[idx])
 #else
@@ -312,6 +317,9 @@ static inline unsigned char key_at(const unsigned char *key, int key_len,
 
     return key[idx];
 }
+#endif
+#else
+#define keyAt(key, len, idx) (key)[idx]
 #endif
 
 // A helper for looking at the key value at given index, in a leaf
