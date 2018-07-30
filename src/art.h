@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h> /* size_t */
+
 __BEGIN_DECLS
 
 typedef enum artNode { NODE4 = 1, NODE16, NODE48, NODE256 } artNode;
@@ -35,6 +37,7 @@ typedef struct art_node4 {
  */
 typedef struct art_node16 {
     art_node n;
+    /* 16 keys and children because 16 bytes loads nicely into a __m128i */
     uint8_t keys[16];
     art_node *children[16];
 } art_node16;
@@ -58,8 +61,7 @@ typedef struct art_node256 {
 } art_node256;
 
 /**
- * Represents a leaf. These are
- * of arbitrary size, as they include the key.
+ * Represents a leaf. These are of arbitrary size, as they include the key.
  */
 typedef struct art_leaf {
     void *value;
@@ -93,6 +95,8 @@ int art_tree_init(art_tree *t);
  * @return 0 on success.
  */
 int art_tree_destroy(art_tree *t);
+size_t art_tree_bytes(art_tree *t);
+size_t art_tree_nodes(art_tree *t);
 
 /**
  * DEPRECATED

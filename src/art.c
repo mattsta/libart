@@ -1,16 +1,13 @@
 #include "art.h"
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
-#ifdef __i386__
+#if __i386__ || __amd64__
 #include <emmintrin.h>
-#else
-#ifdef __amd64__
-#include <emmintrin.h>
-#endif
 #endif
 
 /**
@@ -135,6 +132,146 @@ int art_tree_destroy(art_tree *t) {
     return 0;
 }
 
+static size_t countNodes(art_node *n) {
+    if (!n) {
+        return 0;
+    }
+
+    // Special case leafs
+    if (IS_LEAF(n)) {
+        return 1;
+    }
+
+    // Handle each node type
+    int i, idx;
+    union {
+        art_node4 *p1;
+        art_node16 *p2;
+        art_node48 *p3;
+        art_node256 *p4;
+    } p;
+    size_t total = 0;
+    switch (n->type) {
+    case NODE4:
+        p.p1 = (art_node4 *)n;
+        for (i = 0; i < n->childrenCount; i++) {
+            total += countNodes(p.p1->children[i]);
+        }
+
+        break;
+
+    case NODE16:
+        p.p2 = (art_node16 *)n;
+        for (i = 0; i < n->childrenCount; i++) {
+            total += countNodes(p.p2->children[i]);
+        }
+
+        break;
+
+    case NODE48:
+        p.p3 = (art_node48 *)n;
+        for (i = 0; i < 256; i++) {
+            idx = ((art_node48 *)n)->keys[i];
+            if (!idx) {
+                continue;
+            }
+
+            total += countNodes(p.p3->children[idx - 1]);
+        }
+
+        break;
+
+    case NODE256:
+        p.p4 = (art_node256 *)n;
+        for (i = 0; i < 256; i++) {
+            if (p.p4->children[i]) {
+                total += countNodes(p.p4->children[i]);
+            }
+        }
+
+        break;
+
+    default:
+        __builtin_unreachable();
+    }
+
+    return total + 1;
+}
+
+size_t art_tree_nodes(art_tree *t) {
+    return countNodes(t->root);
+}
+
+static size_t countBytes(art_node *n) {
+    if (!n) {
+        return 0;
+    }
+
+    // Special case leafs
+    if (IS_LEAF(n)) {
+        return sizeof(art_leaf) + LEAF_RAW(n)->keyLen;
+    }
+
+    // Handle each node type
+    int i, idx;
+    union {
+        art_node4 *p1;
+        art_node16 *p2;
+        art_node48 *p3;
+        art_node256 *p4;
+    } p;
+    size_t total = 0;
+    switch (n->type) {
+    case NODE4:
+        p.p1 = (art_node4 *)n;
+        for (i = 0; i < n->childrenCount; i++) {
+            total += countBytes(p.p1->children[i]);
+        }
+
+        break;
+
+    case NODE16:
+        p.p2 = (art_node16 *)n;
+        for (i = 0; i < n->childrenCount; i++) {
+            total += countBytes(p.p2->children[i]);
+        }
+
+        break;
+
+    case NODE48:
+        p.p3 = (art_node48 *)n;
+        for (i = 0; i < 256; i++) {
+            idx = ((art_node48 *)n)->keys[i];
+            if (!idx) {
+                continue;
+            }
+
+            total += countBytes(p.p3->children[idx - 1]);
+        }
+
+        break;
+
+    case NODE256:
+        p.p4 = (art_node256 *)n;
+        for (i = 0; i < 256; i++) {
+            if (p.p4->children[i]) {
+                total += countBytes(p.p4->children[i]);
+            }
+        }
+
+        break;
+
+    default:
+        __builtin_unreachable();
+    }
+
+    return total + sizeof(*n);
+}
+
+size_t art_tree_bytes(art_tree *t) {
+    return countBytes(t->root);
+}
+
 /**
  * Returns the size of the ART tree.
  */
@@ -144,9 +281,6 @@ extern inline uint64_t art_size(art_tree *t);
 #endif
 
 static art_node **find_child(art_node *n, uint8_t c) {
-    int i;
-    int mask;
-    int bitfield;
     union {
         art_node4 *p1;
         art_node16 *p2;
@@ -156,7 +290,7 @@ static art_node **find_child(art_node *n, uint8_t c) {
     switch (n->type) {
     case NODE4:
         p.p1 = (art_node4 *)n;
-        for (i = 0; i < n->childrenCount; i++) {
+        for (int_fast32_t i = 0; i < n->childrenCount; i++) {
             if ((p.p1->keys)[i] == c) {
                 return &p.p1->children[i];
             }
@@ -164,59 +298,45 @@ static art_node **find_child(art_node *n, uint8_t c) {
 
         break;
 
-        {
-        case NODE16:
-            p.p2 = (art_node16 *)n;
+    case NODE16: {
+        p.p2 = (art_node16 *)n;
 
-// support non-86 architectures
-#ifdef __i386__
-            // Compare the key to all 16 stored keys
-            __m128i cmp;
-            cmp = _mm_cmpeq_epi8(_mm_set1_epi8(c),
-                                 _mm_loadu_si128((__m128i *)p.p2->keys));
+#if __i386__ || __amd64__
+        // Compare the key to all 16 stored keys
+        const __m128i cmp = _mm_cmpeq_epi8(
+            _mm_set1_epi8(c), _mm_loadu_si128((__m128i *)p.p2->keys));
 
-            // Use a mask to ignore children that don't exist
-            mask = (1 << n->childrenCount) - 1;
-            bitfield = _mm_movemask_epi8(cmp) & mask;
+        // Use a mask to ignore children that don't exist
+        const uint_fast32_t mask = (1ULL << n->childrenCount) - 1;
+        const uint_fast32_t bitfield = _mm_movemask_epi8(cmp) & mask;
 #else
-#ifdef __amd64__
-            // Compare the key to all 16 stored keys
-            __m128i cmp;
-            cmp = _mm_cmpeq_epi8(_mm_set1_epi8(c),
-                                 _mm_loadu_si128((__m128i *)p.p2->keys));
-
-            // Use a mask to ignore children that don't exist
-            mask = (1 << n->childrenCount) - 1;
-            bitfield = _mm_movemask_epi8(cmp) & mask;
-#else
-            // Compare the key to all 16 stored keys
-            bitfield = 0;
-            for (i = 0; i < 16; ++i) {
-                if (p.p2->keys[i] == c)
-                    bitfield |= (1 << i);
-            }
-
-            // Use a mask to ignore children that don't exist
-            mask = (1 << n->childrenCount) - 1;
-            bitfield &= mask;
-#endif
-#endif
-
-            /*
-             * If we have a match (any bit set) then we can
-             * return the pointer match using ctz to get
-             * the index.
-             */
-            if (bitfield) {
-                return &p.p2->children[__builtin_ctz(bitfield)];
-            }
-
-            break;
+        // Compare the key to all 16 stored keys
+        uint_fast32_t bitfield = 0;
+        for (int_fast32_t i = 0; i < 16; ++i) {
+            if (p.p2->keys[i] == c)
+                bitfield |= (1 << i);
         }
+
+        // Use a mask to ignore children that don't exist
+        const uint_fast32_t mask = (1 << n->childrenCount) - 1;
+        bitfield &= mask;
+#endif
+
+        /*
+         * If we have a match (any bit set) then we can
+         * return the pointer match using ctz to get
+         * the index.
+         */
+        if (bitfield) {
+            return &p.p2->children[__builtin_ctz(bitfield)];
+        }
+
+        break;
+    }
 
     case NODE48:
         p.p3 = (art_node48 *)n;
-        i = p.p3->keys[c];
+        int_fast32_t i = p.p3->keys[c];
         if (i) {
             return &p.p3->children[i - 1];
         }
@@ -263,18 +383,16 @@ static int check_prefix(const art_node *n, const void *key_, int keyLen,
 
 /**
  * Checks if a leaf matches
- * @return 0 on success.
+ * @return true on success.
  */
-static int leaf_matches(const art_leaf *n, const void *key, int keyLen,
-                        int depth) {
-    (void)depth;
-    // Fail if the key lengths are different
+static bool leaf_matches(const art_leaf *n, const void *key, int keyLen) {
+    // Fail if key lengths are different
     if (n->keyLen != (uint32_t)keyLen) {
-        return 1;
+        return false;
     }
 
     // Compare the keys starting at the depth
-    return memcmp(n->key, key, keyLen);
+    return memcmp(n->key, key, keyLen) == 0;
 }
 
 /**
@@ -295,10 +413,10 @@ void *art_search(const art_tree *t, const void *key_, int keyLen) {
     while (n) {
         // Might be a leaf
         if (IS_LEAF(n)) {
-            n = (art_node *)LEAF_RAW(n);
+            art_leaf *leaf = LEAF_RAW(n);
             // Check if the expanded path matches
-            if (!leaf_matches((art_leaf *)n, key, keyLen, depth)) {
-                return ((art_leaf *)n)->value;
+            if (leaf_matches(leaf, key, keyLen)) {
+                return leaf->value;
             }
 
             return NULL;
@@ -312,6 +430,12 @@ void *art_search(const art_tree *t, const void *key_, int keyLen) {
             }
 
             depth = depth + n->partialLen;
+        }
+
+        if (depth > keyLen) {
+            /* Key in tree is longer than input key.
+             * Match impossible. */
+            return NULL;
         }
 
         // Recursively search
@@ -633,7 +757,7 @@ static void *recursive_insert(art_node *n, art_node **ref, const void *key_,
         art_leaf *l = LEAF_RAW(n);
 
         // Check if we are updating an existing value
-        if (!leaf_matches(l, key, keyLen, depth)) {
+        if (leaf_matches(l, key, keyLen)) {
             *old = 1;
             void *old_val = l->value;
             l->value = value;
@@ -862,7 +986,7 @@ static art_leaf *recursive_delete(art_node *n, art_node **ref, const void *key_,
     // Handle hitting a leaf node
     if (IS_LEAF(n)) {
         art_leaf *l = LEAF_RAW(n);
-        if (!leaf_matches(l, key, keyLen, depth)) {
+        if (leaf_matches(l, key, keyLen)) {
             *ref = NULL;
             return l;
         }
@@ -889,7 +1013,7 @@ static art_leaf *recursive_delete(art_node *n, art_node **ref, const void *key_,
     // If the child is leaf, delete from this node
     if (IS_LEAF(*child)) {
         art_leaf *l = LEAF_RAW(*child);
-        if (!leaf_matches(l, key, keyLen, depth)) {
+        if (leaf_matches(l, key, keyLen)) {
             remove_child(n, ref, key[depth], child);
             return l;
         }
@@ -1010,17 +1134,17 @@ int art_iter(art_tree *t, art_callback cb, void *data) {
 
 /**
  * Checks if a leaf prefix matches
- * @return 0 on success.
+ * @return true on success.
  */
-static int leaf_prefix_matches(const art_leaf *n, const void *prefix,
-                               int prefix_len) {
+static bool leaf_prefix_matches(const art_leaf *n, const void *prefix,
+                                int prefix_len) {
     // Fail if the key length is too short
     if (n->keyLen < (uint32_t)prefix_len) {
-        return 1;
+        return false;
     }
 
     // Compare the keys
-    return memcmp(n->key, prefix, prefix_len);
+    return memcmp(n->key, prefix, prefix_len) == 0;
 }
 
 /**
@@ -1047,7 +1171,7 @@ int art_iter_prefix(art_tree *t, const void *key_, int keyLen, art_callback cb,
         if (IS_LEAF(n)) {
             n = (art_node *)LEAF_RAW(n);
             // Check if the expanded path matches
-            if (!leaf_prefix_matches((art_leaf *)n, key, keyLen)) {
+            if (leaf_prefix_matches((art_leaf *)n, key, keyLen)) {
                 art_leaf *l = (art_leaf *)n;
                 return cb(data, l->key, l->keyLen, l->value);
             }
@@ -1058,7 +1182,7 @@ int art_iter_prefix(art_tree *t, const void *key_, int keyLen, art_callback cb,
         // If the depth matches the prefix, we need to handle this node
         if (depth == keyLen) {
             art_leaf *l = minimum(n);
-            if (!leaf_prefix_matches(l, key, keyLen)) {
+            if (leaf_prefix_matches(l, key, keyLen)) {
                 return recursive_iter(n, cb, data);
             }
 
