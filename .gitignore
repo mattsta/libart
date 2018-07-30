@@ -2,3 +2,13 @@
 .sconsign.dblite
 *~
 test_runner
+
+# Annoying scons in-tree build artifacts
+*.os
+*.dylib
+*.so
+
+/build
+
+# Annoying "check" in-tree build artifacts
+/deps
