@@ -1,5 +1,5 @@
+#include "../deps/check-0.9.8/src/check.h"
 #include "test_art.c"
-#include <check.h>
 #include <stdio.h>
 #include <syslog.h>
 
@@ -13,17 +13,17 @@ int main(void) {
 
     // Add the art tests
     suite_add_tcase(s1, tc1);
-    tcase_add_test(tc1, test_art_init_and_destroy);
-    tcase_add_test(tc1, test_art_insert);
-    tcase_add_test(tc1, test_art_insert_verylong);
-    tcase_add_test(tc1, test_art_insert_search);
-    tcase_add_test(tc1, test_art_insert_delete);
-    tcase_add_test(tc1, test_art_insert_random_delete);
-    tcase_add_test(tc1, test_art_insert_iter);
-    tcase_add_test(tc1, test_art_iter_prefix);
-    tcase_add_test(tc1, test_art_long_prefix);
-    tcase_add_test(tc1, test_art_insert_search_uuid);
-    tcase_add_test(tc1, test_art_max_prefix_len_scan_prefix);
+    tcase_add_test(tc1, test_artInit_and_destroy);
+    tcase_add_test(tc1, test_artInsert);
+    tcase_add_test(tc1, test_artInsert_verylong);
+    tcase_add_test(tc1, test_artInsert_search);
+    tcase_add_test(tc1, test_artInsert_delete);
+    tcase_add_test(tc1, test_artInsert_random_delete);
+    tcase_add_test(tc1, test_artInsert_iter);
+    tcase_add_test(tc1, test_artIterPrefix);
+    tcase_add_test(tc1, test_artLong_prefix);
+    tcase_add_test(tc1, test_artInsert_search_uuid);
+    tcase_add_test(tc1, test_artMax_prefix_len_scan_prefix);
     tcase_set_timeout(tc1, 180);
 
     srunner_run_all(sr, CK_ENV);

@@ -3,26 +3,21 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <check.h>
+#include "../deps/check-0.9.8/src/check.h"
 
-#include "art.h"
+#include "../src/art.h"
 
-START_TEST(test_art_init_and_destroy) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInit_and_destroy) {
+    art *t = artCreate();
+    artInit(t);
+    fail_unless(artSize(t) == 0);
 
-    fail_unless(art_size(&t) == 0);
-
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -33,20 +28,17 @@ START_TEST(test_art_insert) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
-        fail_unless(art_size(&t) == line);
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
+        fail_unless(artSize(t) == line);
         line++;
     }
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert_verylong) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_verylong) {
+    art *t = artCreate();
 
     unsigned char key1[300] = {
         16,  0,   0,   0,   7,   10,  0,   0,   0,   2,   17,  10,  0,   0,
@@ -95,20 +87,17 @@ START_TEST(test_art_insert_verylong) {
         8,   18,  255, 255, 255, 219, 191, 198, 134, 5,   208, 212, 72,  44,
         208, 250, 180, 14,  1,   0,   0,   8,   '\0'};
 
-    fail_unless(NULL == art_insert(&t, key1, 299, (void *)key1));
-    fail_unless(NULL == art_insert(&t, key2, 302, (void *)key2));
-    art_insert(&t, key2, 302, (void *)key2);
-    fail_unless(art_size(&t) == 2);
+    fail_unless(NULL == artInsert(t, key1, 299, (void *)key1));
+    fail_unless(NULL == artInsert(t, key2, 302, (void *)key2));
+    artInsert(t, key2, 302, (void *)key2);
+    fail_unless(artSize(t) == 2);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert_search) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_search) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -119,7 +108,7 @@ START_TEST(test_art_insert_search) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
         line++;
     }
 
@@ -132,29 +121,26 @@ START_TEST(test_art_insert_search) {
         len = strlen(buf);
         buf[len - 1] = '\0';
 
-        uintptr_t val = (uintptr_t)art_search(&t, (unsigned char *)buf, len);
+        uintptr_t val = (uintptr_t)artSearch(t, (unsigned char *)buf, len);
         fail_unless(line == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", line,
                     val, buf);
         line++;
     }
 
     // Check the minimum
-    art_leaf *l = art_minimum(&t);
-    fail_unless(l && strcmp((char *)l->key, "A") == 0);
+    artLeaf *l = artMinimum(t);
+    fail_unless(l && strcmp((char *)artLeafKeyOnly(l), "A") == 0);
 
     // Check the maximum
-    l = art_maximum(&t);
-    fail_unless(l && strcmp((char *)l->key, "zythum") == 0);
+    l = artMaximum(t);
+    fail_unless(l && strcmp((char *)artLeafKeyOnly(l), "zythum") == 0);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert_delete) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_delete) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -165,7 +151,7 @@ START_TEST(test_art_insert_delete) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
         line++;
     }
 
@@ -182,33 +168,30 @@ START_TEST(test_art_insert_delete) {
 
         // Search first, ensure all entries still
         // visible
-        uintptr_t val = (uintptr_t)art_search(&t, (unsigned char *)buf, len);
+        uintptr_t val = (uintptr_t)artSearch(t, (unsigned char *)buf, len);
         fail_unless(line == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", line,
                     val, buf);
 
         // Delete, should get lineno back
-        val = (uintptr_t)art_delete(&t, (unsigned char *)buf, len);
+        val = (uintptr_t)artDelete(t, (unsigned char *)buf, len);
         fail_unless(line == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", line,
                     val, buf);
 
         // Check the size
-        fail_unless(art_size(&t) == nlines - line);
+        fail_unless(artSize(t) == nlines - line);
         line++;
     }
 
     // Check the minimum and maximum
-    fail_unless(!art_minimum(&t));
-    fail_unless(!art_maximum(&t));
+    fail_unless(!artMinimum(t));
+    fail_unless(!artMaximum(t));
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert_random_delete) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_random_delete) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -219,7 +202,7 @@ START_TEST(test_art_insert_random_delete) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
         line++;
     }
 
@@ -228,21 +211,20 @@ START_TEST(test_art_insert_random_delete) {
     uintptr_t lineno = 1;
     // Search first, ensure all entries are visible
     uintptr_t val =
-        (uintptr_t)art_search(&t, (unsigned char *)"A", strlen("A") + 1);
+        (uintptr_t)artSearch(t, (unsigned char *)"A", strlen("A") + 1);
     fail_unless(lineno == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", lineno,
                 val, "A");
 
     // Delete a single entry, should get lineno back
-    val = (uintptr_t)art_delete(&t, (unsigned char *)"A", strlen("A") + 1);
+    val = (uintptr_t)artDelete(t, (unsigned char *)"A", strlen("A") + 1);
     fail_unless(lineno == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", lineno,
                 val, "A");
 
     // Ensure  the entry is no longer visible
-    val = (uintptr_t)art_search(&t, (unsigned char *)"A", strlen("A") + 1);
+    val = (uintptr_t)artSearch(t, (unsigned char *)"A", strlen("A") + 1);
     fail_unless(0 == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", 0, val, "A");
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
@@ -256,10 +238,8 @@ int iter_cb(void *data, const void *key_, uint32_t key_len, void *val) {
     return 0;
 }
 
-START_TEST(test_art_insert_iter) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_iter) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -271,7 +251,7 @@ START_TEST(test_art_insert_iter) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
 
         xor_mask ^= (line * (buf[0] + len));
         line++;
@@ -279,13 +259,12 @@ START_TEST(test_art_insert_iter) {
     nlines = line - 1;
 
     uint64_t out[] = {0, 0};
-    fail_unless(art_iter(&t, iter_cb, &out) == 0);
+    fail_unless(artIter(t, iter_cb, &out) == 0);
 
     fail_unless(out[0] == nlines);
     fail_unless(out[1] == xor_mask);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
@@ -305,41 +284,33 @@ static int test_prefix_cb(void *data, const void *k, uint32_t k_len,
     return 0;
 }
 
-START_TEST(test_art_iter_prefix) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artIterPrefix) {
+    art *t = artCreate();
 
     const char *s = "api.foo.bar";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     s = "api.foo.baz";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     s = "api.foe.fum";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     s = "abc.123.456";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     s = "api.foo";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     s = "api";
-    fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, NULL));
+    fail_unless(NULL == artInsert(t, (unsigned char *)s, strlen(s) + 1, NULL));
 
     // Iterate over api
     const char *expected[] = {"api", "api.foe.fum", "api.foo", "api.foo.bar",
                               "api.foo.baz"};
     prefix_data p = {0, 5, expected};
     fail_unless(
-        !art_iter_prefix(&t, (unsigned char *)"api", 3, test_prefix_cb, &p));
+        !artIterPrefix(t, (unsigned char *)"api", 3, test_prefix_cb, &p));
     fail_unless(p.count == p.max_count, "Count: %d Max: %d", p.count,
                 p.max_count);
 
@@ -348,13 +319,13 @@ START_TEST(test_art_iter_prefix) {
                                "api.foo",     "api.foo.bar", "api.foo.baz"};
     prefix_data p2 = {0, 6, expected2};
     fail_unless(
-        !art_iter_prefix(&t, (unsigned char *)"a", 1, test_prefix_cb, &p2));
+        !artIterPrefix(t, (unsigned char *)"a", 1, test_prefix_cb, &p2));
     fail_unless(p2.count == p2.max_count);
 
     // Check a failed iteration
     prefix_data p3 = {0, 0, NULL};
     fail_unless(
-        !art_iter_prefix(&t, (unsigned char *)"b", 1, test_prefix_cb, &p3));
+        !artIterPrefix(t, (unsigned char *)"b", 1, test_prefix_cb, &p3));
     fail_unless(p3.count == 0);
 
     // Iterate over api.
@@ -362,39 +333,35 @@ START_TEST(test_art_iter_prefix) {
                                "api.foo.baz"};
     prefix_data p4 = {0, 4, expected4};
     fail_unless(
-        !art_iter_prefix(&t, (unsigned char *)"api.", 4, test_prefix_cb, &p4));
+        !artIterPrefix(t, (unsigned char *)"api.", 4, test_prefix_cb, &p4));
     fail_unless(p4.count == p4.max_count, "Count: %d Max: %d", p4.count,
                 p4.max_count);
 
     // Iterate over api.foo.ba
     const char *expected5[] = {"api.foo.bar"};
     prefix_data p5 = {0, 1, expected5};
-    fail_unless(!art_iter_prefix(&t, (unsigned char *)"api.foo.bar", 11,
-                                 test_prefix_cb, &p5));
+    fail_unless(!artIterPrefix(t, (unsigned char *)"api.foo.bar", 11,
+                               test_prefix_cb, &p5));
     fail_unless(p5.count == p5.max_count, "Count: %d Max: %d", p5.count,
                 p5.max_count);
 
     // Check a failed iteration on api.end
     prefix_data p6 = {0, 0, NULL};
-    fail_unless(!art_iter_prefix(&t, (unsigned char *)"api.end", 7,
-                                 test_prefix_cb, &p6));
+    fail_unless(
+        !artIterPrefix(t, (unsigned char *)"api.end", 7, test_prefix_cb, &p6));
     fail_unless(p6.count == 0);
 
     // Iterate over empty prefix
     prefix_data p7 = {0, 6, expected2};
-    fail_unless(
-        !art_iter_prefix(&t, (unsigned char *)"", 0, test_prefix_cb, &p7));
+    fail_unless(!artIterPrefix(t, (unsigned char *)"", 0, test_prefix_cb, &p7));
     fail_unless(p7.count == p7.max_count);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_long_prefix) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artLong_prefix) {
+    art *t = artCreate();
 
     uintptr_t v;
     const char *s;
@@ -402,30 +369,30 @@ START_TEST(test_art_long_prefix) {
     s = "this:key:has:a:long:prefix:3";
     v = 3;
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, (void *)v));
+                artInsert(t, (unsigned char *)s, strlen(s) + 1, (void *)v));
 
     s = "this:key:has:a:long:common:prefix:2";
     v = 2;
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, (void *)v));
+                artInsert(t, (unsigned char *)s, strlen(s) + 1, (void *)v));
 
     s = "this:key:has:a:long:common:prefix:1";
     v = 1;
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)s, strlen(s) + 1, (void *)v));
+                artInsert(t, (unsigned char *)s, strlen(s) + 1, (void *)v));
 
     // Search for the keys
     s = "this:key:has:a:long:common:prefix:1";
     fail_unless(1 ==
-                (uintptr_t)art_search(&t, (unsigned char *)s, strlen(s) + 1));
+                (uintptr_t)artSearch(t, (unsigned char *)s, strlen(s) + 1));
 
     s = "this:key:has:a:long:common:prefix:2";
     fail_unless(2 ==
-                (uintptr_t)art_search(&t, (unsigned char *)s, strlen(s) + 1));
+                (uintptr_t)artSearch(t, (unsigned char *)s, strlen(s) + 1));
 
     s = "this:key:has:a:long:prefix:3";
     fail_unless(3 ==
-                (uintptr_t)art_search(&t, (unsigned char *)s, strlen(s) + 1));
+                (uintptr_t)artSearch(t, (unsigned char *)s, strlen(s) + 1));
 
     const char *expected[] = {
         "this:key:has:a:long:common:prefix:1",
@@ -433,20 +400,17 @@ START_TEST(test_art_long_prefix) {
         "this:key:has:a:long:prefix:3",
     };
     prefix_data p = {0, 3, expected};
-    fail_unless(!art_iter_prefix(&t, (unsigned char *)"this:key:has", 12,
-                                 test_prefix_cb, &p));
+    fail_unless(!artIterPrefix(t, (unsigned char *)"this:key:has", 12,
+                               test_prefix_cb, &p));
     fail_unless(p.count == p.max_count, "Count: %d Max: %d", p.count,
                 p.max_count);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_insert_search_uuid) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artInsert_search_uuid) {
+    art *t = artCreate();
 
     int len;
     char buf[512];
@@ -457,7 +421,7 @@ START_TEST(test_art_insert_search_uuid) {
         len = strlen(buf);
         buf[len - 1] = '\0';
         fail_unless(NULL ==
-                    art_insert(&t, (unsigned char *)buf, len, (void *)line));
+                    artInsert(t, (unsigned char *)buf, len, (void *)line));
         line++;
     }
 
@@ -470,56 +434,52 @@ START_TEST(test_art_insert_search_uuid) {
         len = strlen(buf);
         buf[len - 1] = '\0';
 
-        uintptr_t val = (uintptr_t)art_search(&t, (unsigned char *)buf, len);
+        uintptr_t val = (uintptr_t)artSearch(t, (unsigned char *)buf, len);
         fail_unless(line == val, "Line: %d Val: %" PRIuPTR " Str: %s\n", line,
                     val, buf);
         line++;
     }
 
     // Check the minimum
-    art_leaf *l = art_minimum(&t);
-    fail_unless(l && strcmp((char *)l->key,
+    artLeaf *l = artMinimum(t);
+    fail_unless(l && strcmp((char *)artLeafKeyOnly(l),
                             "00026bda-e0ea-4cda-8245-522764e9f325") == 0);
 
     // Check the maximum
-    l = art_maximum(&t);
-    fail_unless(l && strcmp((char *)l->key,
+    l = artMaximum(t);
+    fail_unless(l && strcmp((char *)artLeafKeyOnly(l),
                             "ffffcb46-a92e-4822-82af-a7190f9c1ec5") == 0);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
 
-START_TEST(test_art_max_prefix_len_scan_prefix) {
-    art_tree t;
-    int res = art_tree_init(&t);
-    fail_unless(res == 0);
+START_TEST(test_artMax_prefix_len_scan_prefix) {
+    art *t = artCreate();
 
     char *key1 = "foobarbaz1-test1-foo";
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)key1, strlen(key1) + 1, NULL));
+                artInsert(t, (unsigned char *)key1, strlen(key1) + 1, NULL));
 
     char *key2 = "foobarbaz1-test1-bar";
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)key2, strlen(key2) + 1, NULL));
+                artInsert(t, (unsigned char *)key2, strlen(key2) + 1, NULL));
 
     char *key3 = "foobarbaz1-test2-foo";
     fail_unless(NULL ==
-                art_insert(&t, (unsigned char *)key3, strlen(key3) + 1, NULL));
+                artInsert(t, (unsigned char *)key3, strlen(key3) + 1, NULL));
 
-    fail_unless(art_size(&t) == 3);
+    fail_unless(artSize(t) == 3);
 
     // Iterate over api
     const char *expected[] = {key2, key1};
     prefix_data p = {0, 2, expected};
     char *prefix = "foobarbaz1-test1";
-    fail_unless(!art_iter_prefix(&t, (unsigned char *)prefix, strlen(prefix),
-                                 test_prefix_cb, &p));
+    fail_unless(!artIterPrefix(t, (unsigned char *)prefix, strlen(prefix),
+                               test_prefix_cb, &p));
     fail_unless(p.count == p.max_count, "Count: %d Max: %d", p.count,
                 p.max_count);
 
-    res = art_tree_destroy(&t);
-    fail_unless(res == 0);
+    artFree(t);
 }
 END_TEST
