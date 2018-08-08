@@ -16,7 +16,7 @@ void artFreeInner(art *t);
 
 size_t artBytes(const art *t);
 size_t artNodes(const art *t);
-uint64_t artSize(const art *t);
+uint64_t artCount(const art *t);
 
 void *artInsert(art *t, const void *key, int keyLen, void *value);
 void *artDelete(art *t, const void *key, int keyLen);

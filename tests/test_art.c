@@ -10,7 +10,7 @@
 START_TEST(test_artInit_and_destroy) {
     art *t = artCreate();
     artInit(t);
-    fail_unless(artSize(t) == 0);
+    fail_unless(artCount(t) == 0);
 
     artFree(t);
 }
@@ -29,7 +29,7 @@ START_TEST(test_artInsert) {
         buf[len - 1] = '\0';
         fail_unless(NULL ==
                     artInsert(t, (unsigned char *)buf, len, (void *)line));
-        fail_unless(artSize(t) == line);
+        fail_unless(artCount(t) == line);
         line++;
     }
 
@@ -90,7 +90,7 @@ START_TEST(test_artInsert_verylong) {
     fail_unless(NULL == artInsert(t, key1, 299, (void *)key1));
     fail_unless(NULL == artInsert(t, key2, 302, (void *)key2));
     artInsert(t, key2, 302, (void *)key2);
-    fail_unless(artSize(t) == 2);
+    fail_unless(artCount(t) == 2);
 
     artFree(t);
 }
@@ -178,7 +178,7 @@ START_TEST(test_artInsert_delete) {
                     val, buf);
 
         // Check the size
-        fail_unless(artSize(t) == nlines - line);
+        fail_unless(artCount(t) == nlines - line);
         line++;
     }
 
@@ -469,7 +469,7 @@ START_TEST(test_artMax_prefix_len_scan_prefix) {
     fail_unless(NULL ==
                 artInsert(t, (unsigned char *)key3, strlen(key3) + 1, NULL));
 
-    fail_unless(artSize(t) == 3);
+    fail_unless(artCount(t) == 3);
 
     // Iterate over api
     const char *expected[] = {key2, key1};

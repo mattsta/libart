@@ -75,7 +75,7 @@ typedef struct artLeaf {
 
 typedef struct art {
     artNode *root;
-    uint64_t size;
+    uint64_t count;
 } art;
 
 __END_DECLS

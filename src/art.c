@@ -53,7 +53,7 @@ static artNode *alloc_node(uint_fast8_t type) {
  */
 void artInit(art *t) {
     t->root = NULL;
-    t->size = 0;
+    t->count = 0;
 }
 
 art *artCreate(void) {
@@ -275,8 +275,8 @@ size_t artBytes(const art *t) {
     return countBytes(t->root);
 }
 
-uint64_t artSize(const art *t) {
-    return t->size;
+uint64_t artCount(const art *t) {
+    return t->count;
 }
 
 /* =================================================
@@ -900,7 +900,7 @@ void *artInsert(art *t, const void *key, int keyLen, void *value) {
         recursive_insert(t->root, &t->root, key, keyLen, value, 0, &old_val);
 
     if (!old_val) {
-        t->size++;
+        t->count++;
     }
 
     return old;
@@ -1083,13 +1083,12 @@ static artLeaf *recursive_delete(artNode *n, artNode **ref, const void *key_,
  * @arg t The tree
  * @arg key The key
  * @arg keyLen The length of the key
- * @return NULL if the item was not found, otherwise
- * the value pointer is returned.
+ * @return NULL if the item was not found, otherwise return value pointer.
  */
 void *artDelete(art *t, const void *key, int keyLen) {
     artLeaf *l = recursive_delete(t->root, &t->root, key, keyLen, 0);
     if (l) {
-        t->size--;
+        t->count--;
         void *old = l->value;
         free(l);
         return old;
