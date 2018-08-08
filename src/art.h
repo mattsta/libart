@@ -24,6 +24,7 @@ void *artSearch(const art *t, const void *key, int keyLen);
 
 void *artLeafValue(artLeaf *l);
 void artLeafKey(artLeaf *l, void **key, size_t *len);
+void *artLeafKeyOnly(artLeaf *l);
 
 artLeaf *artMinimum(art *t);
 artLeaf *artMaximum(art *t);

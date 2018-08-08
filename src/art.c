@@ -597,6 +597,10 @@ void artLeafKey(artLeaf *l, void **key, size_t *len) {
     *len = l->keyLen;
 }
 
+void *artLeafKeyOnly(artLeaf *l) {
+    return l->key;
+}
+
 static artLeaf *make_leaf(const void *key, int keyLen, void *value) {
     artLeaf *l = (artLeaf *)calloc(1, sizeof(artLeaf) + keyLen);
     l->value = value;
