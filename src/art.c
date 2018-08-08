@@ -454,8 +454,7 @@ static bool leaf_matches(const artLeaf *n, const void *key, int keyLen) {
  * @arg t The tree
  * @arg key The key
  * @arg keyLen The length of the key
- * @return NULL if the item was not found, otherwise
- * the value pointer is returned.
+ * @return NULL if the item was not found, otherwise return value pointer.
  */
 void *artSearch(const art *t, const void *key_, int keyLen) {
     artNode **child;
@@ -891,8 +890,7 @@ RECURSE_SEARCH:;
  * @arg key The key
  * @arg keyLen The length of the key
  * @arg value Opaque value.
- * @return NULL if the item was newly inserted, otherwise
- * the old value pointer is returned.
+ * @return NULL if item is new, otherwise return old value pointer.
  */
 void *artInsert(art *t, const void *key, int keyLen, void *value) {
     int old_val = 0;
