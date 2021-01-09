@@ -311,6 +311,10 @@ uint64_t artCount(const art *t) {
 // A helper for looking at the key value at given index, in a leaf
 #define leafKeyAt(leaf, idx) keyAt((leaf)->key, (leaf)->keyLen, idx)
 
+// Flip the sign bit, enables signed SSE comparison of unsigned values, used by
+// Node16
+#define FLIP_SIGN(x) ((x) ^ 128)
+
 static artNode **find_child(artNode *n, uint8_t c) {
     union {
         artNode4 *p1;
@@ -333,8 +337,9 @@ static artNode **find_child(artNode *n, uint8_t c) {
     case NODE16: {
 #if __SSE__
         // Compare the key to all 16 stored keys
-        const __m128i cmp = _mm_cmpeq_epi8(
-            _mm_set1_epi8(c), _mm_loadu_si128((__m128i *)p.p2->keys));
+        const __m128i cmp =
+            _mm_cmpeq_epi8(_mm_set1_epi8(FLIP_SIGN(c)),
+                           _mm_loadu_si128((__m128i *)p.p2->keys));
 
         // Use a mask to ignore children that don't exist
         const uint_fast32_t mask = (1ULL << n->childrenCount) - 1;
@@ -343,7 +348,7 @@ static artNode **find_child(artNode *n, uint8_t c) {
         // Compare the key to all 16 stored keys
         uint_fast32_t bitfield = 0;
         for (int_fast32_t i = 0; i < 16; ++i) {
-            if (p.p2->keys[i] == c)
+            if (p.p2->keys[i] == FLIP_SIGN(c))
                 bitfield |= (1 << i);
         }
 
@@ -654,7 +659,7 @@ static void add_child16(artNode16 *n, artNode **ref, uint8_t c, void *child) {
 
 #if __SSE__
         // Compare the key to all 16 stored keys
-        const __m128i cmp = _mm_cmplt_epi8(_mm_set1_epi8(c),
+        const __m128i cmp = _mm_cmplt_epi8(_mm_set1_epi8(FLIP_SIGN(c)),
                                            _mm_loadu_si128((__m128i *)n->keys));
 
         // Use a mask to ignore children that don't exist
@@ -663,7 +668,7 @@ static void add_child16(artNode16 *n, artNode **ref, uint8_t c, void *child) {
         // Compare the key to all 16 stored keys
         uint_fast32_t bitfield = 0;
         for (short i = 0; i < 16; ++i) {
-            if (c < n->keys[i])
+            if (FLIP_SIGN(c) < n->keys[i])
                 bitfield |= (1 << i);
         }
 
@@ -683,7 +688,7 @@ static void add_child16(artNode16 *n, artNode **ref, uint8_t c, void *child) {
         }
 
         // Set the child
-        n->keys[idx] = c;
+        n->keys[idx] = FLIP_SIGN(c);
         n->children[idx] = (artNode *)child;
         n->n.childrenCount++;
     } else {
@@ -693,7 +698,7 @@ static void add_child16(artNode16 *n, artNode **ref, uint8_t c, void *child) {
         memcpy(new_node->children, n->children,
                sizeof(void *) * n->n.childrenCount);
         for (int_fast32_t i = 0; i < n->n.childrenCount; i++) {
-            new_node->keys[n->keys[i]] = i + 1;
+            new_node->keys[FLIP_SIGN(n->keys[i])] = i + 1;
         }
 
         copy_header((artNode *)new_node, (artNode *)n);
@@ -727,7 +732,11 @@ static void add_child4(artNode4 *n, artNode **ref, uint8_t c, void *child) {
         // Copy the child pointers and the key map
         memcpy(new_node->children, n->children,
                sizeof(void *) * n->n.childrenCount);
-        memcpy(new_node->keys, n->keys, sizeof(uint8_t) * n->n.childrenCount);
+
+        for (size_t i = 0; i < 4; i++) {
+            new_node->keys[i] = FLIP_SIGN(n->keys[i]);
+        }
+
         copy_header((artNode *)new_node, (artNode *)n);
         *ref = (artNode *)new_node;
         free(n);
@@ -1019,7 +1028,7 @@ static void remove_child48(artNode48 *n, artNode **ref, uint8_t c) {
         for (int i = 0; i < 256; i++) {
             pos = n->keys[i];
             if (pos) {
-                new_node->keys[child] = i;
+                new_node->keys[child] = FLIP_SIGN(i);
                 new_node->children[child] = n->children[pos - 1];
                 child++;
             }
@@ -1040,7 +1049,11 @@ static void remove_child16(artNode16 *n, artNode **ref, artNode **l) {
         artNode4 *new_node = (artNode4 *)alloc_node(NODE4);
         *ref = (artNode *)new_node;
         copy_header((artNode *)new_node, (artNode *)n);
-        memcpy(new_node->keys, n->keys, 4);
+
+        for (size_t i = 0; i < 4; i++) {
+            new_node->keys[i] = FLIP_SIGN(n->keys[i]);
+        }
+
         memcpy(new_node->children, n->children, 4 * sizeof(void *));
         free(n);
     }
