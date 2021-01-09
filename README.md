@@ -25,17 +25,10 @@ To build the test code successfully, do the following::
 
     $ cd deps/check-0.9.8/
     $ ./configure
-    $ make
-    # make install
-    # ldconfig (necessary on some Linux distros)
+    $ make -j12
     $ cd ../../
     $ scons
-    $ ./test_runner
-
-Or, if you prefer, you can skip the installation of libcheck and the test
-will adapt to it being in the tree (leave out `make install`):
-
-     $ LD_LIBRARY_PATH=deps/check-0.9.8/src/.libs:. ./test_runner
+    $ LD_LIBRARY_PATH=. ./test_runner
 
 This build will produce a test_runner executable for testing and a shared_object 
 (libart.so on *NIX systems) for linking with.
