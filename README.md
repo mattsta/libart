@@ -1,6 +1,18 @@
 libart [![Build Status](https://travis-ci.org/armon/libart.png)](https://travis-ci.org/armon/libart)
 =========
 
+## Branch Note
+
+---
+
+armon's `libart` is a "complete" project as far as it doesn't receive any new updates or feature additions.
+
+I've taken libart and tried to modernize the coding style and interfaces to better fit my
+own projects. Also I've improved the space efficiency of certain data layouts inside
+the internal data structures somewhat.
+
+---
+
 This library provides a C99 implementation of the Adaptive Radix
 Tree or ART. The ART operates similar to a traditional radix tree but
 avoids the wasted space of internal nodes by changing the node size.
