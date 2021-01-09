@@ -1,10 +1,12 @@
-#include "artInternal.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+#include "art.h"
+#include "artInternal.h"
 
 #if __SSE__
 #include <emmintrin.h>
@@ -19,13 +21,13 @@
  */
 #define IS_LEAF(x) (((uintptr_t)x & 1))
 #define SET_LEAF(x) ((void *)((uintptr_t)x | 1))
-#define LEAF_RAW(x) ((artLeaf *)((void *)((uintptr_t)x & ~1)))
+#define LEAF_RAW(x) ((artLeaf *)((void *)((uintptr_t)x & ~1ULL)))
 
 /**
  * Allocates a node of the given type,
  * initializes to zero and sets the type.
  */
-static artNode *alloc_node(uint_fast8_t type) {
+static artNode *alloc_node(artType type) {
     artNode *n;
     switch (type) {
     case NODE4:
@@ -41,6 +43,7 @@ static artNode *alloc_node(uint_fast8_t type) {
         n = (artNode *)calloc(1, sizeof(artNode256));
         break;
     default:
+        assert(NULL && "Bad type?");
         __builtin_unreachable();
     }
 
@@ -56,14 +59,14 @@ void artInit(art *t) {
     t->count = 0;
 }
 
-art *artCreate(void) {
+art *artNew(void) {
+    /* No init needed because init just sets everything to zero anyway. */
     art *t = calloc(1, sizeof(*t));
     return t;
 }
 
 // Recursively destroys the tree
 static void destroy_node(artNode *n) {
-    // Break if null
     if (!n) {
         return;
     }
@@ -75,32 +78,30 @@ static void destroy_node(artNode *n) {
     }
 
     // Handle each node type
-    int i, idx;
     union {
         artNode4 *p1;
         artNode16 *p2;
         artNode48 *p3;
         artNode256 *p4;
-    } p;
+        void *any;
+    } p = {.any = n};
+
     switch (n->type) {
     case NODE4:
-        p.p1 = (artNode4 *)n;
-        for (i = 0; i < n->childrenCount; i++) {
+        for (size_t i = 0; i < n->childrenCount; i++) {
             destroy_node(p.p1->children[i]);
         }
 
         break;
     case NODE16:
-        p.p2 = (artNode16 *)n;
-        for (i = 0; i < n->childrenCount; i++) {
+        for (size_t i = 0; i < n->childrenCount; i++) {
             destroy_node(p.p2->children[i]);
         }
 
         break;
     case NODE48:
-        p.p3 = (artNode48 *)n;
-        for (i = 0; i < 256; i++) {
-            idx = ((artNode48 *)n)->keys[i];
+        for (size_t i = 0; i < 256; i++) {
+            size_t idx = ((artNode48 *)n)->keys[i];
             if (!idx) {
                 continue;
             }
@@ -109,8 +110,7 @@ static void destroy_node(artNode *n) {
 
         break;
     case NODE256:
-        p.p4 = (artNode256 *)n;
-        for (i = 0; i < 256; i++) {
+        for (size_t i = 0; i < 256; i++) {
             if (p.p4->children[i]) {
                 destroy_node(p.p4->children[i]);
             }
@@ -133,7 +133,7 @@ void artFreeInner(art *t) {
 }
 
 void artFree(art *t) {
-    destroy_node(t->root);
+    artFreeInner(t);
     free(t);
 }
 
@@ -150,15 +150,16 @@ static size_t countNodes(const artNode *n) {
     // Handle each node type
     int i, idx;
     union {
-        artNode4 *p1;
-        artNode16 *p2;
-        artNode48 *p3;
-        artNode256 *p4;
-    } p;
+        const artNode4 *p1;
+        const artNode16 *p2;
+        const artNode48 *p3;
+        const artNode256 *p4;
+        const void *any;
+    } p = {.any = n};
     size_t total = 0;
+
     switch (n->type) {
     case NODE4:
-        p.p1 = (artNode4 *)n;
         for (i = 0; i < n->childrenCount; i++) {
             total += countNodes(p.p1->children[i]);
         }
@@ -166,7 +167,6 @@ static size_t countNodes(const artNode *n) {
         break;
 
     case NODE16:
-        p.p2 = (artNode16 *)n;
         for (i = 0; i < n->childrenCount; i++) {
             total += countNodes(p.p2->children[i]);
         }
@@ -174,7 +174,6 @@ static size_t countNodes(const artNode *n) {
         break;
 
     case NODE48:
-        p.p3 = (artNode48 *)n;
         for (i = 0; i < 256; i++) {
             idx = ((artNode48 *)n)->keys[i];
             if (!idx) {
@@ -186,7 +185,6 @@ static size_t countNodes(const artNode *n) {
         break;
 
     case NODE256:
-        p.p4 = (artNode256 *)n;
         for (i = 0; i < 256; i++) {
             if (p.p4->children[i]) {
                 total += countNodes(p.p4->children[i]);
@@ -219,15 +217,16 @@ static size_t countBytes(const artNode *n) {
     // Handle each node type
     int i, idx;
     union {
-        artNode4 *p1;
-        artNode16 *p2;
-        artNode48 *p3;
-        artNode256 *p4;
-    } p;
+        const artNode4 *p1;
+        const artNode16 *p2;
+        const artNode48 *p3;
+        const artNode256 *p4;
+        const void *any;
+    } p = {.any = n};
     size_t total = 0;
+
     switch (n->type) {
     case NODE4:
-        p.p1 = (artNode4 *)n;
         for (i = 0; i < n->childrenCount; i++) {
             total += countBytes(p.p1->children[i]);
         }
@@ -235,7 +234,6 @@ static size_t countBytes(const artNode *n) {
         break;
 
     case NODE16:
-        p.p2 = (artNode16 *)n;
         for (i = 0; i < n->childrenCount; i++) {
             total += countBytes(p.p2->children[i]);
         }
@@ -243,7 +241,6 @@ static size_t countBytes(const artNode *n) {
         break;
 
     case NODE48:
-        p.p3 = (artNode48 *)n;
         for (i = 0; i < 256; i++) {
             idx = ((artNode48 *)n)->keys[i];
             if (!idx) {
@@ -255,7 +252,6 @@ static size_t countBytes(const artNode *n) {
         break;
 
     case NODE256:
-        p.p4 = (artNode256 *)n;
         for (i = 0; i < 256; i++) {
             if (p.p4->children[i]) {
                 total += countBytes(p.p4->children[i]);
@@ -285,7 +281,9 @@ uint64_t artCount(const art *t) {
 /* These keyAt() things were originally from:
  https://github.com/wez/watchman/commit/8950a98ba023120621a2665225d754ce28182512
  and
- https://github.com/armon/libart/issues/12 */
+ https://github.com/armon/libart/issues/12
+ also see
+ https://github.com/kellydunn/go-art/issues/6 */
 // The ART implementation requires that no key be a full prefix of an existing
 // key during insertion.  In practice this means that each key must have a
 // terminator character.  One approach is to ensure that the key and key_len
@@ -298,41 +296,20 @@ uint64_t artCount(const art *t) {
 // key, we synthesize a fake NUL terminator byte.
 //
 // Note that if the keys contain NUL bytes earlier in the string this will
-// break down and won't have the correct results.
-//
-// If the index is out of bounds we will assert to trap the fatal coding
-// error inside this implementation.
+// break down and won't give correct iteration search results.
 //
 // @param key pointer to the key bytes
 // @param key_len the size of the byte, in bytes
 // @param idx the index into the key
 // @return the value of the key at the supplied index.
 #if ART_USE_IMPLICIT_KEY_NULL_TERMINIATOR_PROTECTION
-#if 1
-#define keyAt(key, len, idx) ((idx) == (len) ? 0 : (key)[idx])
-#else
-static inline unsigned char key_at(const unsigned char *key, int key_len,
-                                   int idx) {
-    if (idx == key_len) {
-        // Implicit terminator
-        return 0;
-    }
-
-    return key[idx];
-}
-#endif
-#else
+#define keyAt(key, len, idx) ((idx) == (len) ? '\0' : (key)[idx])
+#else /* You KNOW none of your keys are full prefixes of each other. */
 #define keyAt(key, len, idx) (key)[idx]
 #endif
 
 // A helper for looking at the key value at given index, in a leaf
-#if 1
 #define leafKeyAt(leaf, idx) keyAt((leaf)->key, (leaf)->keyLen, idx)
-#else
-static inline unsigned char leaf_key_at(const artLeaf *l, int idx) {
-    return keyAt(l->key, l->keyLen, idx);
-}
-#endif
 
 static artNode **find_child(artNode *n, uint8_t c) {
     union {
@@ -340,10 +317,11 @@ static artNode **find_child(artNode *n, uint8_t c) {
         artNode16 *p2;
         artNode48 *p3;
         artNode256 *p4;
-    } p;
+        void *any;
+    } p = {.any = n};
+
     switch (n->type) {
     case NODE4:
-        p.p1 = (artNode4 *)n;
         for (int_fast32_t i = 0; i < n->childrenCount; i++) {
             if ((p.p1->keys)[i] == c) {
                 return &p.p1->children[i];
@@ -353,8 +331,6 @@ static artNode **find_child(artNode *n, uint8_t c) {
         break;
 
     case NODE16: {
-        p.p2 = (artNode16 *)n;
-
 #if __SSE__
         // Compare the key to all 16 stored keys
         const __m128i cmp = _mm_cmpeq_epi8(
@@ -388,17 +364,16 @@ static artNode **find_child(artNode *n, uint8_t c) {
         break;
     }
 
-    case NODE48:
-        p.p3 = (artNode48 *)n;
-        int_fast32_t i = p.p3->keys[c];
+    case NODE48: {
+        const int_fast32_t i = p.p3->keys[c];
         if (i) {
             return &p.p3->children[i - 1];
         }
 
         break;
+    }
 
     case NODE256:
-        p.p4 = (artNode256 *)n;
         if (p.p4->children[c]) {
             return &p.p4->children[c];
         }
@@ -421,8 +396,8 @@ static inline int min(int a, int b) {
  * Returns the number of prefix characters shared between
  * the key and node.
  */
-static int checkPrefix(const artNode *n, const void *key_, int keyLen,
-                       int depth) {
+static int checkPrefix(const artNode *n, const void *key_,
+                       const uint_fast32_t keyLen, int depth) {
     int idx;
     const int max_cmp = min(min(n->partialLen, MAX_PREFIX_LEN), keyLen - depth);
     const uint8_t *restrict key = key_;
@@ -439,13 +414,13 @@ static int checkPrefix(const artNode *n, const void *key_, int keyLen,
  * Checks if a leaf matches
  * @return true on success.
  */
-static bool leaf_matches(const artLeaf *n, const void *key, int keyLen) {
-    // Fail if key lengths are different
-    if (n->keyLen != (uint32_t)keyLen) {
+static inline bool leafNodeIsExactKey(const artLeaf *restrict const n,
+                                      const void *restrict const key,
+                                      const uint_fast32_t keyLen) {
+    if (n->keyLen != keyLen) {
         return false;
     }
 
-    // Compare the keys starting at the depth
     return memcmp(n->key, key, keyLen) == 0;
 }
 
@@ -454,9 +429,12 @@ static bool leaf_matches(const artLeaf *n, const void *key, int keyLen) {
  * @arg t The tree
  * @arg key The key
  * @arg keyLen The length of the key
- * @return NULL if the item was not found, otherwise return value pointer.
+ * @arg value value of key
+ * @return 'true' if item found, 'false' if not found.
+ *
  */
-void *artSearch(const art *t, const void *key_, int keyLen) {
+bool artSearch(const art *t, const void *key_, const uint_fast32_t keyLen,
+               void **value) {
     artNode **child;
     artNode *n = t->root;
     int prefixLen;
@@ -464,15 +442,19 @@ void *artSearch(const art *t, const void *key_, int keyLen) {
 
     const uint8_t *restrict key = key_;
     while (n) {
-        // Might be a leaf
         if (IS_LEAF(n)) {
             artLeaf *leaf = LEAF_RAW(n);
+
             // Check if the expanded path matches
-            if (leaf_matches(leaf, key, keyLen)) {
-                return leaf->value;
+            if (leafNodeIsExactKey(leaf, key, keyLen)) {
+                if (value) {
+                    *value = leaf->value.ptr;
+                }
+
+                return true;
             }
 
-            return NULL;
+            return false;
         }
 
         // Bail if the prefix does not match
@@ -488,6 +470,11 @@ void *artSearch(const art *t, const void *key_, int keyLen) {
         if (depth > keyLen) {
             /* Key in tree is longer than input key.
              * Match impossible. */
+            return NULL;
+        }
+
+        // Don't overflow the key buffer if we go too deep
+        if (depth >= keyLen) {
             return NULL;
         }
 
@@ -589,21 +576,22 @@ artLeaf *artMaximum(art *t) {
 }
 
 void *artLeafValue(artLeaf *l) {
-    return l->value;
+    return l->value.ptr;
 }
 
-void artLeafKey(artLeaf *l, void **key, size_t *len) {
+size_t artLeafKey(artLeaf *l, void **key) {
     *key = l->key;
-    *len = l->keyLen;
+    return l->keyLen;
 }
 
 void *artLeafKeyOnly(artLeaf *l) {
     return l->key;
 }
 
-static artLeaf *make_leaf(const void *key, int keyLen, void *value) {
+static artLeaf *make_leaf(const void *key, const uint_fast32_t keyLen,
+                          const artValue *value) {
     artLeaf *l = (artLeaf *)calloc(1, sizeof(artLeaf) + keyLen);
-    l->value = value;
+    l->value = *value;
     l->keyLen = keyLen;
     memcpy(l->key, key, keyLen);
     return l;
@@ -621,7 +609,7 @@ static int longest_commonPrefix(artLeaf *l1, artLeaf *l2, int depth) {
     return idx;
 }
 
-static void copy_header(artNode *dest, artNode *src) {
+static void copy_header(artNode *restrict dest, artNode *restrict src) {
     dest->childrenCount = src->childrenCount;
     dest->partialLen = src->partialLen;
     memcpy(dest->partial, src->partial, min(MAX_PREFIX_LEN, src->partialLen));
@@ -769,10 +757,10 @@ static void add_child(artNode *n, artNode **ref, uint8_t c, void *child) {
 /**
  * Calculates the index at which the prefixes mismatch
  */
-static int prefix_mismatch(const artNode *n, const void *key_, int keyLen,
-                           int depth) {
+static size_t prefix_mismatch(const artNode *n, const void *key_,
+                              const uint_fast32_t keyLen, int depth) {
     int max_cmp = min(min(MAX_PREFIX_LEN, n->partialLen), keyLen - depth);
-    int idx;
+    size_t idx;
     const uint8_t *restrict key = key_;
     for (idx = 0; idx < max_cmp; idx++) {
         if (n->partial[idx] != key[depth + idx]) {
@@ -795,25 +783,50 @@ static int prefix_mismatch(const artNode *n, const void *key_, int keyLen,
     return idx;
 }
 
-static void *recursive_insert(artNode *n, artNode **ref, const void *key_,
-                              int keyLen, void *value, int depth, int *old) {
+static void *recursive_insert(artNode *restrict const n, artNode **ref,
+                              const void *key_, const uint_fast32_t keyLen,
+                              const artValue *const value, int depth,
+                              bool *restrict const replaced,
+                              const artIncrementDesc desc, artLeaf **usedLeaf) {
     const uint8_t *restrict key = key_;
 
     // If we are at a NULL node, inject a leaf
     if (!n) {
-        *ref = (artNode *)SET_LEAF(make_leaf(key, keyLen, value));
+        artLeaf *restrict const l = make_leaf(key, keyLen, value);
+        if (usedLeaf) {
+            *usedLeaf = l;
+        }
+
+        *ref = (artNode *)SET_LEAF(l);
         return NULL;
     }
 
     // If we are at a leaf, we need to replace it with a node
     if (IS_LEAF(n)) {
         artLeaf *l = LEAF_RAW(n);
+        if (usedLeaf) {
+            *usedLeaf = l;
+        }
 
         // Check if we are updating an existing value
-        if (leaf_matches(l, key, keyLen)) {
-            *old = 1;
-            void *old_val = l->value;
-            l->value = value;
+        if (leafNodeIsExactKey(l, key, keyLen)) {
+            *replaced = true;
+            void *const old_val = l->value.ptr;
+
+            switch (desc) {
+            case ART_INCREMENT_WHOLE:
+                l->value.u++;
+                break;
+            case ART_INCREMENT_A:
+                l->value.su.a++;
+                break;
+            case ART_INCREMENT_B:
+                l->value.su.b++;
+                break;
+            default:
+                l->value = *value;
+            }
+
             return old_val;
         }
 
@@ -828,6 +841,7 @@ static void *recursive_insert(artNode *n, artNode **ref, const void *key_,
         new_node->n.partialLen = longestPrefix;
         memcpy(new_node->n.partial, key + depth,
                min(MAX_PREFIX_LEN, longestPrefix));
+
         // Add the leafs to the new node4
         *ref = (artNode *)new_node;
         add_child4(new_node, ref, leafKeyAt(l, depth + longestPrefix),
@@ -869,6 +883,10 @@ static void *recursive_insert(artNode *n, artNode **ref, const void *key_,
 
         // Insert the new leaf
         artLeaf *l = make_leaf(key, keyLen, value);
+        if (usedLeaf) {
+            *usedLeaf = l;
+        }
+
         add_child4(new_node, ref, leafKeyAt(l, depth + prefix_diff),
                    SET_LEAF(l));
         return NULL;
@@ -879,11 +897,15 @@ RECURSE_SEARCH:;
     artNode **child = find_child(n, keyAt(key, keyLen, depth));
     if (child) {
         return recursive_insert(*child, child, key, keyLen, value, depth + 1,
-                                old);
+                                replaced, desc, usedLeaf);
     }
 
     // No child, node goes within us
     artLeaf *l = make_leaf(key, keyLen, value);
+    if (usedLeaf) {
+        *usedLeaf = l;
+    }
+
     add_child(n, ref, leafKeyAt(l, depth), SET_LEAF(l));
     return NULL;
 }
@@ -894,18 +916,68 @@ RECURSE_SEARCH:;
  * @arg key The key
  * @arg keyLen The length of the key
  * @arg value Opaque value.
- * @return NULL if item is new, otherwise return old value pointer.
+ * @return 'true' if key is new; 'false' if key is replaced.
  */
-void *artInsert(art *t, const void *key, int keyLen, void *value) {
-    int old_val = 0;
-    void *old =
-        recursive_insert(t->root, &t->root, key, keyLen, value, 0, &old_val);
+bool artInsert(art *restrict const t, const void *restrict const key,
+               const uint_fast32_t keyLen, void *restrict const value_,
+               void **oldValue) {
+    bool replaced = false;
+    const artValue value = {.ptr = value_};
+    void *const old =
+        recursive_insert(t->root, &t->root, key, keyLen, &value, 0, &replaced,
+                         ART_INCREMENT_REPLACE, NULL);
 
-    if (!old_val) {
+    if (!replaced) {
         t->count++;
+        return true;
     }
 
-    return old;
+    if (oldValue) {
+        *oldValue = old;
+    }
+
+    return false;
+}
+
+void artLeafIncrement(artLeaf *l) {
+    l->value.u++;
+}
+
+bool artInsertIncrement(art *const t, const void *const key,
+                        const uint_fast32_t keyLen, const artIncrementDesc desc,
+                        artLeaf **usedLeaf) {
+    bool replaced = false;
+
+    /* Generate a mock pointer union for _initial_ increment value (if this is
+     * the first insert for 'key')... */
+    artValue initialValU = {0};
+    switch (desc) {
+    case ART_INCREMENT_WHOLE:
+        initialValU.u = 1;
+        break;
+    case ART_INCREMENT_A:
+        initialValU.su.a = 1;
+        break;
+    case ART_INCREMENT_B:
+        initialValU.su.b = 1;
+        break;
+    default:
+        assert(NULL && "Increment without increment operation?");
+        __builtin_unreachable();
+    }
+
+    recursive_insert(t->root, &t->root, key, keyLen, &initialValU, 0, &replaced,
+                     desc, usedLeaf);
+
+    if (!replaced) {
+        t->count++;
+
+        /* Return 'false' meaning key was _inserted_ with start value 1. */
+        return false;
+    }
+
+    /* Return 'true' meaning key was _incremented_ to a higher value. */
+    return true;
 }
 
 static void remove_child256(artNode256 *n, artNode **ref, uint8_t c) {
@@ -1028,8 +1100,9 @@ static void remove_child(artNode *n, artNode **ref, uint8_t c, artNode **l) {
     }
 }
 
-static artLeaf *recursive_delete(artNode *n, artNode **ref, const void *key_,
-                                 int keyLen, int depth) {
+static artLeaf *recursive_delete(artNode *restrict const n, artNode **ref,
+                                 const void *key_, const uint_fast32_t keyLen,
+                                 int depth, const artIncrementDesc desc) {
     // Search terminated
     if (!n) {
         return NULL;
@@ -1040,8 +1113,47 @@ static artLeaf *recursive_delete(artNode *n, artNode **ref, const void *key_,
     // Handle hitting a leaf node
     if (IS_LEAF(n)) {
         artLeaf *l = LEAF_RAW(n);
-        if (leaf_matches(l, key, keyLen)) {
-            *ref = NULL;
+        if (leafNodeIsExactKey(l, key, keyLen)) {
+            switch (desc) {
+            case ART_INCREMENT_WHOLE:
+                /* If we were the last refcount, the key is now deleted */
+                if (l->value.u == 1) {
+                    *ref = NULL;
+                } else {
+                    /* else, we have more refcounts to delete later */
+                    l->value.u--;
+                    return NULL;
+                }
+                break;
+            case ART_INCREMENT_A:
+                /* If we were the last refcount, the key is now deleted */
+                if (l->value.su.a == 1) {
+                    *ref = NULL;
+                } else {
+                    /* else, we have more refcounts to delete later */
+                    l->value.su.a--;
+                    return NULL;
+                }
+                break;
+            case ART_INCREMENT_B:
+                /* If we were the last refcount, the key is now deleted */
+                if (l->value.su.b == 1) {
+                    *ref = NULL;
+                } else {
+                    /* else, we have more refcounts to delete later */
+                    l->value.su.b--;
+                    return NULL;
+                }
+                break;
+            case ART_INCREMENT_REPLACE:
+                /* Default "delete means delete" action. */
+                *ref = NULL;
+                break;
+            default:
+                assert(NULL && "Unknown action?");
+                __builtin_unreachable();
+            }
+
             return l;
         }
 
@@ -1067,17 +1179,16 @@ static artLeaf *recursive_delete(artNode *n, artNode **ref, const void *key_,
     // If the child is leaf, delete from this node
     if (IS_LEAF(*child)) {
         artLeaf *l = LEAF_RAW(*child);
-        if (leaf_matches(l, key, keyLen)) {
+        if (leafNodeIsExactKey(l, key, keyLen)) {
             remove_child(n, ref, keyAt(key, keyLen, depth), child);
             return l;
         }
 
         return NULL;
-
-        // Recurse
     }
 
-    return recursive_delete(*child, child, key, keyLen, depth + 1);
+    // Recurse
+    return recursive_delete(*child, child, key, keyLen, depth + 1, desc);
 }
 
 /**
@@ -1087,16 +1198,38 @@ static artLeaf *recursive_delete(artNode *n, artNode **ref, const void *key_,
  * @arg keyLen The length of the key
  * @return NULL if the item was not found, otherwise return value pointer.
  */
-void *artDelete(art *t, const void *key, int keyLen) {
-    artLeaf *l = recursive_delete(t->root, &t->root, key, keyLen, 0);
+bool artDelete(art *t, const void *restrict const key,
+               const uint_fast32_t keyLen, void **value) {
+    artLeaf *l = recursive_delete(t->root, &t->root, key, keyLen, 0,
+                                  ART_INCREMENT_REPLACE);
     if (l) {
         t->count--;
-        void *old = l->value;
+
+        if (value) {
+            *value = l->value.ptr;
+        }
+
         free(l);
-        return old;
+
+        return true;
     }
 
-    return NULL;
+    return false;
+}
+
+bool artDeleteDecrement(art *t, const void *key, uint_fast32_t keyLen,
+                        const artIncrementDesc desc) {
+    artLeaf *l = recursive_delete(t->root, &t->root, key, keyLen, 0, desc);
+    if (l) {
+        t->count--;
+        free(l);
+
+        /* Return 'true' meaning key was actually deleted */
+        return true;
+    }
+
+    /* Return 'false' meaning key isn't deleted because it still has a count. */
+    return false;
 }
 
 // Recursively iterates over the tree
@@ -1108,7 +1241,7 @@ static int recursive_iter(artNode *n, artCallback cb, void *data) {
 
     if (IS_LEAF(n)) {
         artLeaf *l = LEAF_RAW(n);
-        return cb(data, l->key, l->keyLen, l->value);
+        return cb(data, l->key, l->keyLen, l->value.ptr);
     }
 
     int res;
@@ -1150,7 +1283,7 @@ static int recursive_iter(artNode *n, artCallback cb, void *data) {
             /* The child nodes are not populated from low to high, so it's
              * possible to have a few dozen NULL nodes at the beginning then
              * catch populated entries towards the end.
-             * The iterated node counts here to not respect n->childrenCount
+             * The iterated node counts here do not respect n->childrenCount
              * and can exceed the count by design. */
 
             if (!((artNode256 *)n)->children[i]) {
@@ -1212,8 +1345,8 @@ static bool leafPrefix_matches(const artLeaf *n, const void *prefix,
  * @arg data Opaque handle passed to the callback
  * @return 0 on success, or the return of the callback.
  */
-int artIterPrefix(art *t, const void *key_, int keyLen, artCallback cb,
-                  void *data) {
+int artIterPrefix(const art *t, const void *key_, const uint_fast32_t keyLen,
+                  artCallback cb, void *data) {
     artNode **child;
     artNode *n = t->root;
     int prefixLen;
@@ -1226,7 +1359,7 @@ int artIterPrefix(art *t, const void *key_, int keyLen, artCallback cb,
             // Check if the expanded path matches
             if (leafPrefix_matches((artLeaf *)n, key, keyLen)) {
                 artLeaf *l = (artLeaf *)n;
-                return cb(data, l->key, l->keyLen, l->value);
+                return cb(data, l->key, l->keyLen, l->value.ptr);
             }
 
             return 0;
@@ -1265,6 +1398,13 @@ int artIterPrefix(art *t, const void *key_, int keyLen, artCallback cb,
             depth = depth + n->partialLen;
         }
 
+#if 1
+        if (depth >= keyLen) {
+            // Node depth is greater than input key; can't match
+            return 0;
+        }
+#endif
+
         // Recursively search
         child = find_child(n, keyAt(key, keyLen, depth));
         n = (child) ? *child : NULL;
@@ -1273,3 +1413,30 @@ int artIterPrefix(art *t, const void *key_, int keyLen, artCallback cb,
 
     return 0;
 }
+
+/* Copyright (c) 2012, Armon Dadgar
+ * All rights reserved.
+ *
+ * Major changes and refactoring/improvements (c) 2018-2019, Matt Stancliff.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the organization nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL ARMON DADGAR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */

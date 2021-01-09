@@ -3,13 +3,14 @@
 #include "artCommon.h"
 __BEGIN_DECLS
 
-typedef enum artType { NODE4 = 1, NODE16, NODE48, NODE256 } artType;
-
-#define MAX_PREFIX_LEN 10
+/* 'artType' must fit in 2 bits (max integer value is 3) */
+typedef enum artType { NODE4 = 0, NODE16, NODE48, NODE256 } artType;
 
 /**
  * This struct is included as part of all the various node sizes
  */
+#if 0
+#define MAX_PREFIX_LEN 10
 typedef struct artNode {
     uint32_t partialLen; /* length of 'partial' */
 #if 0
@@ -26,6 +27,21 @@ typedef struct artNode {
 #endif
     uint8_t partial[MAX_PREFIX_LEN];
 } artNode;
+#else
+/* Optimize MAX_PREFIX_LEN by reducing len and type to minimal required sizes */
+#define MAX_PREFIX_LEN 14
+typedef struct artNode {
+    uint8_t partialLen; /* length of 'partial' (could be 4 bits, but less
+                           efficient) */
+    uint8_t type : 2;
+    uint8_t childrenCount : 6;
+    uint8_t partial[MAX_PREFIX_LEN];
+} artNode;
+
+_Static_assert(
+    sizeof(artNode) == 16,
+    "Are you sure you want to make artNode bigger than we expected?");
+#endif
 
 /**
  * Small node with only 4 children
@@ -42,6 +58,7 @@ typedef struct artNode4 {
 typedef struct artNode16 {
     artNode n;
     /* 16 keys and children because 16 bytes loads nicely into a __m128i */
+    /* (16 bytes * 8 bytes/byte == 128 bits == in-place __m128i vector) */
     uint8_t keys[16];
     artNode *children[16];
 } artNode16;
@@ -67,15 +84,30 @@ typedef struct artNode256 {
 /**
  * Represents a leaf. These are of arbitrary size, as they include the key.
  */
-typedef struct artLeaf {
-    void *value;
+struct artLeaf {
+    /* TODO: create artSet where we have an art with ONLY keys.
+     *       We only need to test for the presence of a key and we can
+     *       save 8 bytes since we don't need 'value' in the case of an
+     *       artSet */
+    /* Also, leaves are allocated individually thus incurring even more
+     * allocation overhead. We could create a slab/mempool of leaves to hand out
+     * as needed. See function 'make_leaf' */
+    artValue value;
     uint32_t keyLen;
     uint8_t key[];
-} artLeaf;
+};
 
-typedef struct art {
+typedef struct artKeySetLeaf {
+    /* Also, leaves are allocated individually thus incurring even more
+     * allocation overhead. We could create a slab/mempool of leaves to hand out
+     * as needed. See function 'make_leaf' */
+    uint32_t keyLen;
+    uint8_t key[];
+} artKeySetLeaf;
+
+struct art {
     artNode *root;
     uint64_t count;
-} art;
+};
 
 __END_DECLS
