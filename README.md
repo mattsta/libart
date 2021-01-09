@@ -24,6 +24,8 @@ Building the test code will generate errors if libcheck is not available.
 To build the test code successfully, do the following::
 
     $ cd deps/check-0.9.8/
+    $ automake
+    $ autoconf
     $ ./configure
     $ make -j12
     $ cd ../../
